@@ -1,0 +1,80 @@
+--Contain a subquery
+--This query identifies employees whose base salary is higher than the company's overall average salary. This provides the HR and Finance departments with an immediate list of high-cost personnel. By monitoring these employees, management can review department budgets and ensure compensation aligns with operational value and the payroll transaction system.
+
+SELECT name, dept, salary 
+FROM employees 
+WHERE salary > (SELECT AVG(salary) FROM employees);
+
+
+--Contain an inner join
+--This query generates a comprehensive "Event Master Schedule" that displays the event date, description, the performing artist's name, and the venue city. Since the events table only stores IDs (ArtistID, VenueID), this query translates those numbers into a readable format for event coordinators and marketing teams. It fulfills the core business process of tracking new events by linking artists and venues seamlessly.
+
+SELECT e.event_date, e.description, a.name AS artist_name, v.city, v.type AS venue_type
+FROM events e
+JOIN artists a ON e.artistid = a.artistid
+JOIN venue v ON e.venueid = v.venueid
+ORDER BY e.event_date;
+
+
+--Contain an outer join
+--This query lists all tickets, specifically highlighting which tickets have not yet been assigned to an order (unsold tickets). This directly addresses your stated business problem of "missing out on potential revenue (under selling)". By using a LEFT OUTER JOIN between tickets and orders and filtering for records where the orderid IS NULL, the marketing team can immediately see exactly how much unsold inventory remains for upcoming events and launch targeted promotions.
+
+SELECT t.ticketid, t.type AS ticket_type, e.description AS event_name, e.event_date
+FROM tickets t
+LEFT OUTER JOIN orders o ON t.orderid = o.orderid
+JOIN events e ON t.eventid = e.eventid
+WHERE t.orderid IS NULL;
+
+
+--Contain a GROUP BY clause without the HAVING clause
+--This query calculates the total payroll expenses grouped by employee department. By joining the Employee and EmpPayroll tables and grouping by the dept attribute, management can see exactly how much money is being spent on Management, Security, Sound, etc. This supports the third primary transaction of our business, processing payroll, by providing high-level financial oversight.
+
+SELECT e.dept, SUM(p.amtpaid) AS total_department_payroll
+FROM employees e
+JOIN emppayroll p ON e.empid = p.empid
+GROUP BY e.dept;
+
+
+--Contain a GROUP BY clause together with the HAVING clause
+--This query identifies high-volume events by finding events that have sold more than 5 tickets in your database(for simplicity purposes we will assume 5 is a lot). Knowing which shows are the most popular allows management to adjust staffing levels for security and concessions, optimize future marketing budgets toward high-demand genres, or negotiate more lucrative sponsorship deals for similar upcoming dates.
+
+SELECT  e.EventID, e.Description, COUNT(t.TicketID) AS TotalTicketsSold
+FROM Events e
+JOIN  Tickets t ON e.EventID = t.EventID
+GROUP BY e.EventID, e.Description
+HAVING COUNT(t.TicketID) > 5;
+
+
+--Define relevant INDEXES
+--This index creates an index on the "Date" column in the events table. Event management companies constantly query their databases based on dates (e.g., finding all events happening next week). An index on the date column will significantly speed up data retrieval times for the front-end application.
+
+CREATE INDEX idx_event_date ON events(event_date);
+
+--Define a relevant VIEW
+--This view creates a VIP_Customer_Directory view that pulls the names, emails, and phone numbers of customers specifically listed as 'VIP' type. Instead of writing a query every time the marketing or customer service team needs to contact high-value clients for exclusive presales, they can simply SELECT * FROM VIP_Customer_Directory. This restricts access to raw table data while providing a quick, easy-to-read dashboard.
+
+CREATE OR REPLACE VIEW vip_customer_directory AS
+SELECT name, email, phone
+FROM customers
+WHERE type = 'VIP';
+
+--Define a relevant TRIGGER
+--This trigger  prevents a double booking  BEFORE INSERT on the events table. This directly solves the primary business problem listed in your project overview: "Double booking people". The trigger can be programmed to check if the proposed VenueID and "Date" already exist in the system. If they do, the trigger raises an application error and blocks the insert, guaranteeing a double booking can never happen at the database level.
+
+CREATE OR REPLACE TRIGGER prevent_double_booking
+BEFORE INSERT ON events
+FOR EACH ROW
+DECLARE
+    v_count NUMBER;
+BEGIN
+    SELECT COUNT(*)
+    INTO v_count
+    FROM events
+    WHERE venueid = :NEW.venueid 
+    AND event_date = :NEW.event_date;
+
+    IF v_count > 0 THEN
+        RAISE_APPLICATION_ERROR(-20001, 'Error: The venue is already booked for this date.');
+    END IF;
+END;
+/
